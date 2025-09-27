@@ -1,18 +1,18 @@
 import os
 from flask import Flask, render_template, request, jsonify
+from flask_cors import CORS
 import json
-import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 app = Flask(__name__)
+CORS(app)
 
-# 简单的匹配逻辑
-class SimpleLegalMatcher:
+class LegalCaseMatcher:
     def __init__(self):
         self.cases = []
         self.vectorizer = TfidfVectorizer(max_features=500)
-        self.load_data()  # 初始化时直接加载数据
+        self.load_data()
     
     def load_data(self):
         """加载案例数据"""
@@ -30,20 +30,26 @@ class SimpleLegalMatcher:
                 
         except Exception as e:
             print(f"数据加载失败: {e}")
-            # 提供默认数据
             self.cases = [
                 {
-                    "id": 1,
-                    "title": "法律类案匹配系统",
-                    "content": "系统已成功启动，请输入案件描述进行搜索",
-                    "category": "系统",
-                    "outcome": "运行中"
+                    "id": 1, "title": "系统就绪", "content": "请输入案件描述进行搜索", 
+                    "category": "系统", "outcome": "运行中"
+                },
+                {
+                    "id": 2, "title": "劳动合同纠纷案例", 
+                    "content": "员工因公司违法解除劳动合同要求经济赔偿金，法院支持原告诉求。",
+                    "category": "劳动法", "outcome": "原告胜诉"
+                },
+                {
+                    "id": 3, "title": "交通事故赔偿案例",
+                    "content": "机动车与行人发生交通事故，根据责任认定判决相应赔偿金额。",
+                    "category": "侵权法", "outcome": "部分支持"
                 }
             ]
             texts = [f"{case.get('title', '')} {case.get('content', '')}" for case in self.cases]
             self.case_vectors = self.vectorizer.fit_transform(texts)
 
-    def search(self, query, top_k=3):
+    def search(self, query, top_k=5):
         """搜索相似案例"""
         if not self.cases or self.case_vectors is None:
             return [{"title": "示例案例", "content": "系统初始化中...", "similarity": 0.9}]
@@ -65,37 +71,72 @@ class SimpleLegalMatcher:
             return [{"title": "搜索出错", "content": f"错误信息: {str(e)}", "similarity": 0}]
 
 # 初始化匹配器
-matcher = SimpleLegalMatcher()
+matcher = LegalCaseMatcher()
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/api/search', methods=['POST'])
+# 修改这个路由，同时支持GET和POST
+@app.route('/api/search', methods=['GET', 'POST'])
 def search_cases():
     try:
-        data = request.json
-        query = data.get('query', '')
-        top_k = data.get('top_k', 3)
+        # 处理GET请求（用于浏览器直接测试）
+        if request.method == 'GET':
+            query = request.args.get('query', '劳动合同')
+            top_k = int(request.args.get('top_k', 3))
+            
+            if not query:
+                return jsonify({'error': '请提供查询参数: ?query=搜索词'})
+            
+            results = matcher.search(query, top_k=top_k)
+            return jsonify({
+                'query': query,
+                'top_k': top_k,
+                'results': results,
+                'method': 'GET'
+            })
         
-        if not query:
-            return jsonify({'error': '查询内容不能为空'}), 400
-        
-        results = matcher.search(query, top_k=top_k)
-        return jsonify({'results': results})
+        # 处理POST请求（用于前端界面）
+        elif request.method == 'POST':
+            data = request.get_json()
+            if not data:
+                return jsonify({'error': '没有收到JSON数据'}), 400
+                
+            query = data.get('query', '')
+            top_k = data.get('top_k', 5)
+            
+            if not query:
+                return jsonify({'error': '查询内容不能为空'}), 400
+            
+            results = matcher.search(query, top_k=top_k)
+            return jsonify({'results': results})
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/test')
+def test_search():
+    """测试搜索的专用路由"""
+    results = matcher.search("劳动合同纠纷", top_k=3)
+    return jsonify({
+        'message': '测试搜索成功',
+        'results': results
+    })
 
 @app.route('/api/health')
 def health_check():
     return jsonify({
         'status': 'healthy', 
         'service': '法律类案匹配系统',
-        'case_count': len(matcher.cases)
+        'case_count': len(matcher.cases),
+        'endpoints': {
+            '测试搜索': '/api/test',
+            '搜索API': '/api/search?query=关键词',
+            '健康检查': '/api/health'
+        }
     })
 
-# 根路径健康检查
 @app.route('/health')
 def health():
     return "✅ 法律类案匹配系统运行正常"
