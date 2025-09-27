@@ -1,12 +1,18 @@
 import os
 from flask import Flask, render_template, request, jsonify
-from flask_cors import CORS
 import json
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 app = Flask(__name__)
-CORS(app)
+
+# 手动处理CORS（避免安装flask-cors）
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
 
 class LegalCaseMatcher:
     def __init__(self):
@@ -39,11 +45,6 @@ class LegalCaseMatcher:
                     "id": 2, "title": "劳动合同纠纷案例", 
                     "content": "员工因公司违法解除劳动合同要求经济赔偿金，法院支持原告诉求。",
                     "category": "劳动法", "outcome": "原告胜诉"
-                },
-                {
-                    "id": 3, "title": "交通事故赔偿案例",
-                    "content": "机动车与行人发生交通事故，根据责任认定判决相应赔偿金额。",
-                    "category": "侵权法", "outcome": "部分支持"
                 }
             ]
             texts = [f"{case.get('title', '')} {case.get('content', '')}" for case in self.cases]
@@ -77,37 +78,26 @@ matcher = LegalCaseMatcher()
 def index():
     return render_template('index.html')
 
-# 修改这个路由，同时支持GET和POST
 @app.route('/api/search', methods=['GET', 'POST'])
 def search_cases():
     try:
-        # 处理GET请求（用于浏览器直接测试）
+        # 处理GET请求
         if request.method == 'GET':
             query = request.args.get('query', '劳动合同')
             top_k = int(request.args.get('top_k', 3))
-            
-            if not query:
-                return jsonify({'error': '请提供查询参数: ?query=搜索词'})
             
             results = matcher.search(query, top_k=top_k)
             return jsonify({
                 'query': query,
                 'top_k': top_k,
-                'results': results,
-                'method': 'GET'
+                'results': results
             })
         
-        # 处理POST请求（用于前端界面）
+        # 处理POST请求
         elif request.method == 'POST':
             data = request.get_json()
-            if not data:
-                return jsonify({'error': '没有收到JSON数据'}), 400
-                
             query = data.get('query', '')
             top_k = data.get('top_k', 5)
-            
-            if not query:
-                return jsonify({'error': '查询内容不能为空'}), 400
             
             results = matcher.search(query, top_k=top_k)
             return jsonify({'results': results})
@@ -117,29 +107,17 @@ def search_cases():
 
 @app.route('/api/test')
 def test_search():
-    """测试搜索的专用路由"""
-    results = matcher.search("劳动合同纠纷", top_k=3)
-    return jsonify({
-        'message': '测试搜索成功',
-        'results': results
-    })
+    """测试搜索"""
+    results = matcher.search("劳动合同", top_k=2)
+    return jsonify({'results': results})
 
 @app.route('/api/health')
 def health_check():
     return jsonify({
         'status': 'healthy', 
         'service': '法律类案匹配系统',
-        'case_count': len(matcher.cases),
-        'endpoints': {
-            '测试搜索': '/api/test',
-            '搜索API': '/api/search?query=关键词',
-            '健康检查': '/api/health'
-        }
+        'case_count': len(matcher.cases)
     })
-
-@app.route('/health')
-def health():
-    return "✅ 法律类案匹配系统运行正常"
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
