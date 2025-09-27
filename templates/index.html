@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>法律类案匹配系统</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .search-section {
+            padding: 40px;
+            background: #f8f9fa;
+        }
+        
+        .search-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        #queryInput {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        
+        #searchBtn {
+            padding: 15px 30px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        #searchBtn:hover {
+            background: #2980b9;
+        }
+        
+        .results-section {
+            padding: 20px 40px;
+        }
+        
+        .case-card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: transform 0.2s;
+        }
+        
+        .case-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .case-title {
+            color: #2c3e50;
+            font-size: 1.3em;
+            margin-bottom: 10px;
+        }
+        
+        .case-content {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+        
+        .case-meta {
+            display: flex;
+            justify-content: space-between;
+            color: #888;
+            font-size: 0.9em;
+        }
+        
+        .similarity {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⚖️ 法律类案匹配系统</h1>
+            <p>基于AI技术的智能法律案例检索平台</p>
+        </div>
+        
+        <div class="search-section">
+            <div class="search-box">
+                <input type="text" id="queryInput" 
+                       placeholder="请输入案件描述或关键词，例如：劳动合同解除赔偿...">
+                <button id="searchBtn">搜索相似案例</button>
+            </div>
+            <div>
+                <small>示例：交通事故赔偿、民间借贷纠纷、房屋买卖违约等</small>
+            </div>
+        </div>
+        
+        <div class="results-section">
+            <h2>匹配结果</h2>
+            <div id="resultsContainer"></div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('searchBtn').addEventListener('click', searchCases);
+        document.getElementById('queryInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') searchCases();
+        });
+
+        async function searchCases() {
+            const query = document.getElementById('queryInput').value.trim();
+            if (!query) {
+                alert('请输入搜索内容');
+                return;
+            }
+
+            const resultsContainer = document.getElementById('resultsContainer');
+            resultsContainer.innerHTML = '<div class="loading">搜索中...</div>';
+
+            try {
+                const response = await fetch('/api/search', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        query: query,
+                        top_k: 5
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || '搜索失败');
+                }
+
+                displayResults(data.results);
+            } catch (error) {
+                resultsContainer.innerHTML = `<div class="loading">错误: ${error.message}</div>`;
+            }
+        }
+
+        function displayResults(results) {
+            const container = document.getElementById('resultsContainer');
+            
+            if (results.length === 0) {
+                container.innerHTML = '<div class="loading">未找到相关案例</div>';
+                return;
+            }
+
+            container.innerHTML = results.map(caseItem => `
+                <div class="case-card">
+                    <div class="case-title">${caseItem.title}</div>
+                    <div class="case-content">${caseItem.content}</div>
+                    <div class="case-meta">
+                        <span>类别: ${caseItem.category}</span>
+                        <span>结果: ${caseItem.outcome}</span>
+                        <span class="similarity">相似度: ${(caseItem.similarity * 100).toFixed(1)}%</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+    </script>
+</body>
+</html>
